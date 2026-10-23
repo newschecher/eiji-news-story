@@ -57,7 +57,7 @@ h2{font-size:13px;margin:18px 0 0;border-top:1px solid #333;padding-top:12px;col
   <div class="row"><button class="sub" id="pp">⏯ 再生/停止</button><button class="sub" id="mute">🔇 音: オフ</button></div>
   <label>素材の使う範囲(秒) <span id="vdur"></span></label>
   <div class="row"><input type="number" id="tstart" min="0" step="0.1" placeholder="開始" value="0"><input type="number" id="tend" min="0" step="0.1" placeholder="終了"></div>
-  <label>完成動画の長さ(秒・空欄=使う範囲と同じ / 最大60)</label>
+  <label>完成動画の長さ(秒・空欄=使う範囲と同じ。写真は6秒 / 最大60)</label>
   <input type="number" id="outlen" min="1" max="60" step="0.5" placeholder="自動">
   <p class="hint">完成動画の長さが範囲より長い場合は範囲を繰り返し、短い場合は途中で切ります。</p>
   <label>ロゴ(右上・任意)</label>
@@ -102,9 +102,15 @@ function wrap(text,maxW){
   return lines;
 }
 
-function cover(src,sw,sh){
-  const s=Math.max(W/sw,H/sh),w=sw*s,h=sh*s;
-  ctx.drawImage(src,(W-w)/2,(H-h)/2,w,h);
+function cover(src,sw,sh,pan){
+  // pan(0〜1)を指定すると、少し拡大して左から右へゆっくり動かす(写真用)
+  const s=Math.max(W/sw,H/sh)*(pan===undefined?1:1.15),w=sw*s,h=sh*s;
+  const x=pan===undefined?(W-w)/2:-(w-W)*pan;
+  ctx.drawImage(src,x,(H-h)/2,w,h);
+}
+function imgPan(){
+  if(recording){const q=Math.min(1,(performance.now()-recStart)/1000/outLen());return q*q*(3-2*q)}
+  return .5-.5*Math.cos(Math.PI*(performance.now()-animStart)/1000/8); // プレビューは往復
 }
 
 function draw(){
@@ -112,7 +118,7 @@ function draw(){
   $('hsv').textContent=$('hsize').value+'px';
   ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
   if(vid&&vid.readyState>=2) cover(vid,vid.videoWidth,vid.videoHeight);
-  else if(bgImg) cover(bgImg,bgImg.width,bgImg.height);
+  else if(bgImg) cover(bgImg,bgImg.width,bgImg.height,imgPan());
   else{ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H)}
 
   // 左からスライドイン(場所 → 日付 → ラベル → 本文の順)
@@ -189,7 +195,7 @@ function animT(){
 let recStart=0;
 const tS=()=>Math.max(0,+$('tstart').value||0);
 const tE=()=>{const e=+$('tend').value;return vid&&e>tS()+0.1&&e<=vid.duration?e:(vid?vid.duration:0)};
-const outLen=()=>Math.min(60,+$('outlen').value||(tE()-tS()));
+const outLen=()=>Math.min(60,+$('outlen').value||(vid?tE()-tS():6));
 function loop(){
   // 選択した範囲(開始〜終了)でループ
   if(vid&&(vid.ended||(!vid.paused&&vid.currentTime>=tE()-0.04))){vid.currentTime=tS();vid.play()}
@@ -284,7 +290,7 @@ $('dl').onclick=()=>{
 };
 
 $('rec').onclick=async()=>{
-  if(!vid){$('status').textContent='先に背景に動画を選んでください';return}
+  if(!vid&&!bgImg){$('status').textContent='先に背景の動画か写真を選んでください';return}
   if(recording)return;
   recording=true;$('rec').disabled=true;$('saveVid').style.display='none';
   const types=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9,opus','video/webm'];
@@ -292,7 +298,7 @@ $('rec').onclick=async()=>{
   const ext=mime.includes('mp4')?'mp4':'webm';
   const stream=cv.captureStream(30);
   try{
-    const vs=(vid.captureStream?vid.captureStream():null);
+    const vs=(vid&&vid.captureStream?vid.captureStream():null);
     if(vs)vs.getAudioTracks().forEach(t=>stream.addTrack(t));
   }catch(e){}
   const chunks=[];
@@ -300,16 +306,18 @@ $('rec').onclick=async()=>{
   mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);
   const done=new Promise(r=>mr.onstop=r);
   const total=outLen();
-  vid.pause();vid.currentTime=tS();
-  await new Promise(r=>{vid.onseeked=r;});
-  vid.onseeked=null;
+  if(vid){
+    vid.pause();vid.currentTime=tS();
+    await new Promise(r=>{vid.onseeked=r;});
+    vid.onseeked=null;
+  }
   recStart=performance.now();
-  mr.start();await vid.play();
+  mr.start();if(vid)await vid.play();
   // 範囲を超えたら loop() が先頭へ戻すので、指定の長さに達するまで録画
   const tick=setInterval(()=>$('status').textContent=`書き出し中… ${((performance.now()-recStart)/1000).toFixed(1)} / ${total.toFixed(1)}秒`,200);
   await new Promise(r=>setTimeout(r,total*1000));
   clearInterval(tick);mr.stop();await done;
-  vid.currentTime=tS();vid.play();
+  if(vid){vid.currentTime=tS();vid.play()}
   pendingVideo=new File([new Blob(chunks,{type:mime||'video/webm'})],`story_${Date.now()}.${ext}`,{type:mime.split(';')[0]||'video/webm'});
   const warn=ext==='webm'?' ※webm形式です。Instagramに上がらない場合はmp4に変換してください':'';
   if(canShareFile(pendingVideo)){

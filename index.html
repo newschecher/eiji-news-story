@@ -67,6 +67,7 @@ h2{font-size:13px;margin:18px 0 0;border-top:1px solid #333;padding-top:12px;col
   <button class="sub" id="replay">▶ 登場アニメを再生(写真・プレビュー用)</button>
   <button id="dl">画像(PNG)を保存 — 現在のフレーム</button>
   <button id="rec">動画を書き出し(最初から最後まで)</button>
+  <button id="saveVid" style="display:none">📱 完成した動画を写真アプリに保存</button>
   <div id="status"></div>
   <p class="hint">動画の書き出しは再生と同じ長さがかかります(ブラウザの録画機能を使用)。ストーリーは60秒までが目安です。入力内容は自動保存されます(素材ファイルは除く)。</p>
 </div>
@@ -249,15 +250,38 @@ $('mute').onclick=()=>{
   if(vid)vid.muted=on;
 };
 
-$('dl').onclick=()=>{
+// スマホでは共有シートを開く(「画像を保存」「ビデオを保存」で写真アプリに入る)。PCは通常のダウンロード
+const isTouch=matchMedia('(pointer:coarse)').matches;
+function canShareFile(file){return isTouch&&navigator.canShare&&navigator.canShare({files:[file]})}
+function download(blob,name){
   const a=document.createElement('a');
-  a.href=cv.toDataURL('image/png');a.download=`story_${Date.now()}.png`;a.click();
+  a.href=URL.createObjectURL(blob);a.download=name;a.click();
+}
+async function saveFile(file){
+  if(canShareFile(file)){
+    try{await navigator.share({files:[file]});return 'shared'}
+    catch(e){if(e.name==='AbortError')return 'cancel'}
+  }
+  download(file,file.name);return 'downloaded';
+}
+let pendingVideo=null;
+$('saveVid').onclick=async()=>{
+  if(!pendingVideo)return;
+  const r=await saveFile(pendingVideo);
+  if(r==='shared')$('status').textContent='共有メニューから「ビデオを保存」を選ぶと写真アプリに入ります';
+};
+$('dl').onclick=()=>{
+  cv.toBlob(async b=>{
+    const file=new File([b],`story_${Date.now()}.png`,{type:'image/png'});
+    const r=await saveFile(file);
+    if(r==='shared')$('status').textContent='共有メニューから「画像を保存」を選ぶと写真アプリに入ります';
+  },'image/png');
 };
 
 $('rec').onclick=async()=>{
   if(!vid){$('status').textContent='先に背景に動画を選んでください';return}
   if(recording)return;
-  recording=true;$('rec').disabled=true;
+  recording=true;$('rec').disabled=true;$('saveVid').style.display='none';
   const types=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9,opus','video/webm'];
   const mime=types.find(t=>MediaRecorder.isTypeSupported(t))||'';
   const ext=mime.includes('mp4')?'mp4':'webm';
@@ -281,10 +305,15 @@ $('rec').onclick=async()=>{
   await new Promise(r=>setTimeout(r,total*1000));
   clearInterval(tick);mr.stop();await done;
   vid.currentTime=tS();vid.play();
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob(chunks,{type:mime||'video/webm'}));
-  a.download=`story_${Date.now()}.${ext}`;a.click();
-  $('status').textContent=`保存しました (.${ext})`+(ext==='webm'?' ※webm形式です。Instagramに上がらない場合はmp4に変換してください':'');
+  pendingVideo=new File([new Blob(chunks,{type:mime||'video/webm'})],`story_${Date.now()}.${ext}`,{type:mime.split(';')[0]||'video/webm'});
+  const warn=ext==='webm'?' ※webm形式です。Instagramに上がらない場合はmp4に変換してください':'';
+  if(canShareFile(pendingVideo)){
+    $('saveVid').style.display='block';
+    $('status').textContent='書き出し完了。下の「写真アプリに保存」を押してください'+warn;
+  }else{
+    download(pendingVideo,pendingVideo.name);
+    $('status').textContent=`保存しました (.${ext})`+warn;
+  }
   recording=false;$('rec').disabled=false;
 };
 

@@ -198,16 +198,27 @@ fields.forEach(f=>$(f).addEventListener('input',save));
 $('bg').addEventListener('change',e=>{
   const f=e.target.files[0];if(!f)return;
   const url=URL.createObjectURL(f);
-  if(vid){vid.pause();vid=null}bgImg=null;
-  if(f.type.startsWith('video/')){
+  if(vid){vid.pause();vid.remove();vid=null}bgImg=null;
+  if(f.type.startsWith('video/')||/\.(mp4|mov|m4v|webm|3gp)$/i.test(f.name)){
+    // スマホでは画面に載っていない video は読み込まれないことがあるため、見えない状態で DOM に置く
     const v=document.createElement('video');
-    v.src=url;v.loop=false;v.muted=$('mute').dataset.on!=='1';v.playsInline=true;v.crossOrigin='anonymous';
-    v.onloadeddata=()=>{
+    v.setAttribute('playsinline','');v.setAttribute('webkit-playsinline','');
+    v.preload='auto';v.loop=false;v.muted=$('mute').dataset.on!=='1';v.playsInline=true;
+    v.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+    document.body.appendChild(v);
+    $('status').textContent='動画を読み込み中…';
+    let started=false;
+    const start=()=>{
+      if(started||!v.duration||!isFinite(v.duration))return;started=true;
       vid=v;
       $('tstart').value=0;$('tend').value=Math.floor(v.duration*10)/10;$('outlen').value='';
       $('vdur').textContent=`(元動画 ${v.duration.toFixed(1)}秒)`;
-      v.play();
+      $('status').textContent='';
+      v.play().catch(()=>{$('status').textContent='「再生/停止」ボタンを押すと再生されます'});
     };
+    v.onloadedmetadata=start;v.onloadeddata=start;v.oncanplay=start;
+    v.onerror=()=>{$('status').textContent='この動画は読み込めませんでした(形式が未対応の可能性があります)'};
+    v.src=url;v.load();
   }else{const i=new Image();i.onload=()=>bgImg=i;i.src=url}
 });
 $('logo').addEventListener('change',e=>{

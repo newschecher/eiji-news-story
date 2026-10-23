@@ -105,7 +105,7 @@ function wrap(text,maxW){
 function cover(src,sw,sh,pan){
   // pan(0〜1)を指定すると、少し拡大して左から右へゆっくり動かす(写真用)
   const s=Math.max(W/sw,H/sh)*(pan===undefined?1:1.15),w=sw*s,h=sh*s;
-  const x=pan===undefined?(W-w)/2:-(w-W)*pan;
+  const x=pan===undefined?(W-w)/2:-(w-W)*(1-pan);
   ctx.drawImage(src,x,(H-h)/2,w,h);
 }
 function imgPan(){

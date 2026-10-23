@@ -219,6 +219,14 @@ $('bg').addEventListener('change',e=>{
     v.onloadedmetadata=start;v.onloadeddata=start;v.oncanplay=start;
     v.onerror=()=>{$('status').textContent='この動画は読み込めませんでした(形式が未対応の可能性があります)'};
     v.src=url;v.load();
+    // iPhone は preload を無視して play() されるまで読み込まないので、すぐ再生を試みる
+    const p=v.play();if(p&&p.catch)p.catch(()=>{});
+    let tries=0;
+    const poll=setInterval(()=>{
+      if(started||v!==vid&&started){clearInterval(poll);return}
+      start();
+      if(!started&&++tries>75){clearInterval(poll);$('status').textContent='動画を読み込めませんでした。別の動画で試すか、再度ファイルを選んでください'}
+    },200);
   }else{const i=new Image();i.onload=()=>bgImg=i;i.src=url}
 });
 $('logo').addEventListener('change',e=>{

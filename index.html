@@ -29,6 +29,14 @@ h2{font-size:13px;margin:18px 0 0;border-top:1px solid #333;padding-top:12px;col
 <div class="panel">
   <h1>📰 英字新聞編集委員会 速報ストーリーメーカー</h1>
 
+  <label>設定(文字・位置・色・濃さ)</label>
+  <div class="row">
+    <button class="sub" id="p-default" style="margin-top:0">デフォルトに戻す</button>
+    <button class="sub" id="p-load" style="margin-top:0">カスタムを読込</button>
+  </div>
+  <button class="sub" id="p-save" style="margin-top:8px">現在の設定をカスタムとして保存</button>
+  <div id="presetmsg" class="hint" style="min-height:16px;color:#8fd"></div>
+
   <label>場所・タイトル(左上の帯)</label>
   <input type="text" id="place" value="青山キャンパス14号館">
   <div class="row">
@@ -210,9 +218,29 @@ function loop(){
 }
 
 function save(){try{localStorage.setItem('eiji-story2',JSON.stringify(Object.fromEntries(fields.map(f=>[f,$(f).value]))))}catch(e){}}
+const DEFAULTS=Object.fromEntries(fields.map(f=>[f,$(f).value]));
 try{const s=JSON.parse(localStorage.getItem('eiji-story2')||'{}');for(const f of fields)if(s[f]!==undefined)$(f).value=s[f]}catch(e){}
 if(!$('date').value)$('date').value=nowStr();
 fields.forEach(f=>$(f).addEventListener('input',save));
+
+// 設定プリセット(デフォルト / カスタム)
+function applySettings(o){
+  for(const f of fields)if(o[f]!==undefined)$(f).value=o[f];
+  if(!$('date').value)$('date').value=nowStr();
+  save();
+}
+const setMsg=t=>{$('presetmsg').textContent=t;setTimeout(()=>$('presetmsg').textContent='',2500)};
+$('p-default').onclick=()=>{applySettings(DEFAULTS);setMsg('デフォルトの設定に戻しました')};
+$('p-save').onclick=()=>{
+  try{localStorage.setItem('eiji-custom',JSON.stringify(Object.fromEntries(fields.map(f=>[f,$(f).value]))));setMsg('現在の設定をカスタムとして保存しました')}
+  catch(e){setMsg('保存できませんでした')}
+};
+$('p-load').onclick=()=>{
+  try{const c=JSON.parse(localStorage.getItem('eiji-custom')||'null');
+    if(!c){setMsg('カスタム設定がまだ保存されていません');return}
+    applySettings(c);setMsg('カスタム設定を読み込みました')}
+  catch(e){setMsg('読み込めませんでした')}
+};
 
 $('bg').addEventListener('change',e=>{
   const f=e.target.files[0];if(!f)return;
